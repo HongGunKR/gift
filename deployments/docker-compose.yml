@@ -1,0 +1,22 @@
+# Docker Compose 파일 버전 정의
+version: '3.8'
+
+services:
+  # 'app' 이라는 이름의 서비스를 정의 (이름은 원하는 대로 변경 가능)
+  app:
+    # 현재 디렉토리의 Dockerfile을 사용하여 이미지를 빌드
+    build:
+      context: ..
+      dockerfile: ./deployments/Dockerfile
+    # 빌드된 이미지에 'modu-gift'라는 이름을 붙임
+    image: modu-gift
+    # 포트 매핑: 내 컴퓨터의 8501 포트를 컨테이너의 8501 포트에 연결
+    ports:
+      - "8501:8501"
+    # .env 파일의 변수들을 컨테이너의 환경 변수로 전달
+    env_file:
+      - ../.env
+    # 볼륨 마운트: 내 컴퓨터의 'reports' 폴더를 컨테이너 내부의 '/app/reports' 폴더와 동기화
+    # 이렇게 하면 컨테이너를 종료해도 업로드한 파일이 내 컴퓨터에 그대로 남습니다.
+    volumes:
+      - ../reports:/app/reports

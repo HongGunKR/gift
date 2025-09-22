@@ -1,0 +1,16 @@
+streamlit
+pykrx
+pandas
+langchain
+langchain-openai
+duckduckgo-search    # 뉴스
+langchain-community
+pypdf                # PDF 파일 처리
+faiss-cpu            # 벡터 저장소(cpu버전)
+langgraph
+pygraphviz           # 다이어그램 이미지 생성
+matplotlib           # 다이어그램 이미지 생성
+pillow               # 다이어그램 이미지 생성
+python-dotenv
+pyppeteer
+nest_asyncio

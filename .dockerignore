@@ -1,0 +1,19 @@
+# Git 관련 파일 제외
+.git
+.gitignore
+
+# Python 캐시 파일 제외
+__pycache__/
+*.pyc
+
+# 민감 정보 파일 제외 (가장 중요!)
+.env
+.streamlit/secrets.toml
+
+# 개발용 폴더 및 파일 제외
+diagram/
+*.png
+
+# 사용자가 업로드하는 데이터 폴더 제외
+# (이 폴더는 아래 Docker 실행 단계에서 '볼륨'으로 연결합니다)
+reports/
