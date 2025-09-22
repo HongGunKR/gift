@@ -1,0 +1,75 @@
+graph TD
+    subgraph "사용자 영역"
+        A["👤 사용자 (웹 브라우저)"]
+    end
+
+    subgraph "배포 및 환경 관리 (Docker Compose)"
+        C(("Docker Compose"))
+        D["📜 docker-compose.yml"]
+        E["📜 Dockerfile"]
+        F["📝 .env (OPENAI_API_KEY)"]
+    end
+
+    subgraph "애플리케이션 계층 (Streamlit App)"
+        G["🚀 Streamlit Server<br/>(포트 8501)"]
+        G1("메인.py<br/>홈 대시보드")
+        G2("pages/1_TOP100.py<br/>Top 100")
+        G3("pages/2_검색.py<br/>검색 & LangGraph")
+        G4("pages/3_AI_심층분석.py<br/>심층 분석 RAG")
+    end
+
+    subgraph "AI Agent & 데이터 로직"
+        H["🤖 agent.py<br/>(LangGraph & RAG Logic)"]
+        I["📜 data_fetcher.py<br/>(외부 데이터 연동)"]
+    end
+
+    subgraph "외부 데이터 소스 및 저장소"
+        J[("pykrx API<br/>주식 데이터")]
+        K[("DuckDuckGo Search API<br/>뉴스 검색")]
+        L[("OpenAI API<br/>LLM 서비스")]
+        M["/📂 reports/<br/>(PDF 문서 저장소)/"]
+    end
+
+    subgraph "다이어그램 생성 (로컬 유틸리티)"
+        N["📜 visualize_graph.py"]
+        O["/🖼️ langgraph_flowchart.png/"]
+    end
+
+
+    %% 흐름 정의
+    A -- "HTTP 요청" --> G
+
+    %% Docker Build/Run 흐름
+    A -- "'docker-compose up --build' 실행" --> C
+    C -- "Dockerfile, .env, 프로젝트 소스 참조" --> E
+    E -- "시스템 의존성 (Graphviz) 설치" --> B{"Docker Hub<br/>(Base Image)"}
+    E -- "Python 패키지 설치" --> C
+    C -- "'modu-gift' 이미지 빌드" --> G
+    C -- "환경 변수 전달" --> F
+    C -- "포트 매핑 (8501)" --> A
+    C -- "볼륨 마운트" --> M
+
+    %% Streamlit UI 흐름
+    G -- "페이지 선택" --> G1
+    G -- "페이지 선택" --> G2
+    G -- "페이지 선택" --> G3
+    G -- "페이지 선택" --> G4
+
+    %% 데이터 흐름
+    G1 -- "데이터 요청" --> I
+    G2 -- "데이터 요청" --> I
+    G3 -- "데이터 요청" --> I
+    I -- "주식 데이터 요청" --> J
+    I -- "뉴스 검색 요청" --> K
+
+    %% AI Agent 흐름
+    G3 -- "종목 분석 요청" --> H
+    G4 -- "PDF 문서 분석 요청" --> H
+    H -- "데이터 요청 (툴 사용)" --> I
+    H -- "PDF 로드" --> M
+    H -- "LLM 호출" --> L
+
+    %% 다이어그램 생성 흐름
+    A -- "'python diagram/visualize_graph.py' 실행" --> N
+    N -- "agent.py 구조 분석" --> H
+    N -- "다이어그램 로컬 렌더링 (Pyppeteer)" --> O
