@@ -91,7 +91,7 @@
 ### 1. 레포지토리 클론
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/HongGunKR/gift
 cd 모두의선물
 ```
 
