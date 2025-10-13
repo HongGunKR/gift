@@ -1,120 +1,199 @@
 # 🎁 모두의 선물 (AI Stock Analysis Agent)
 
-**모두의 선물**은 대한민국 주식 시장에 관심 있는 초보 투자자를 위해 설계된 AI 기반 주식 분석 웹 애플리케이션입니다. 복잡한 데이터를 AI가 대신 분석하여, 누구나 쉽게 이해할 수 있는 투자 인사이트를 제공하는 것을 목표로 합니다.
+**모두의 선물**은 대한민국 주식 시장에 입문한 투자자에게 “읽기 쉬운” 시장 브리핑을 제공하는 AI 기반 스트림릿 애플리케이션입니다. pykrx와 다양한 외부 데이터 소스를 결합하고, LangGraph/LLM 에이전트가 재무지표·뉴스·사용자 문서를 분석해 행동 가능한 인사이트를 만들어 냅니다.
 
 ## ✨ 주요 기능 (Key Features)
 
-  * **실시간 시장 대시보드**: KOSPI, KOSDAQ 등 주요 지수 현황을 실시간으로 추적합니다.
-  * **시가총액 Top 100**: 현재 시장을 주도하는 상위 100개 기업을 한눈에 파악할 수 있습니다.
-  * **스마트 종목 검색**: 종목명의 일부만 입력해도 관련된 모든 종목을 찾아주는 편리한 검색 기능을 제공합니다.
-  * **다중 페이지 UI**: 각 기능이 독립된 페이지로 구성되어 있어 사용성이 뛰어납니다.
-  * **AI 종합 분석 (LangGraph)**: 사용자가 선택한 종목에 대해 AI Agent가 기업 개요, 재무 상태, 최신 뉴스를 종합적으로 분석하고, 상황에 맞는 맞춤형 리포트를 생성합니다.
-  * **AI 심층 분석 (RAG)**: 사용자가 직접 업로드한 사업보고서나 리포트(PDF) 내용에만 근거하여 AI가 질문에 답변하여, 신뢰도 높은 분석을 제공합니다.
-  * **자동 다이어그램 생성**: 프로젝트에 포함된 스크립트를 통해 AI Agent의 복잡한 작동 흐름을 이미지로 시각화할 수 있습니다.
+- **다차원 시장 대시보드**  
+  - KOSPI·KOSDAQ·KOSPI200 등 핵심 지수의 일별 추세, 전일 대비 절대/퍼센트 변동을 한눈에 확인합니다.  
+  - pykrx 기반 섹터 퍼포먼스를 계산해 상승/하락 업종을 테이블로 강조합니다.  
+  - Yahoo Finance 실시간 스냅샷을 이용해 S&P/Nasdaq 선물, WTI, USD/KRW 환율을 함께 모니터링합니다.
 
-## 🛠️ 기술 스택 (Tech Stack)
+- **시가총액 Top 100 리더보드**  
+  - 최신 영업일 기준 pykrx 데이터를 호출하고, 실패 시 마지막 정상 데이터를 캐시에서 복원해 서비스 다운타임을 최소화합니다.
 
-  * **Frontend**: `Streamlit`
-  * **Data Handling**: `pandas`, `pykrx`, `duckduckgo-search`
-  * **AI / LLM**: `LangChain`, `LangGraph`, `OpenAI`
-  * **Deployment**: `Docker`, `Docker Compose`
-  * **Dependencies**:
-      * `python-dotenv` (환경 변수 관리)
-      * `pygraphviz`, `Graphviz` (다이어그램 시각화)
-      * `pypdf`, `faiss-cpu` (RAG)
+- **스마트 종목 검색 & 기술적 인사이트**  
+  - 종목명 일부만 입력해도 자동 완성 목록을 제공합니다.  
+  - 52주 고저 대비 위치, 5/20/60일 이동평균 괴리율, 거래량 20일 평균 대비 증감, 5·20·60거래일 수익률 등 핵심 지표를 탭으로 시각화합니다.
 
-## 📂 프로젝트 구조 (Project Structure)
+- **LangGraph 기반 AI 종합 분석**  
+  - 재무지표 해석 → 분류(positive/neutral/negative) → 분기별 뉴스 수집 → 최종 보고서의 다단계 플로우를 LangGraph로 구현했습니다.  
+  - DuckDuckGo 검색이 실패하거나 뉴스가 없을 경우에도 안내 메시지를 반환하도록 보강했습니다.
+
+- **멀티 에이전트 오케스트레이션 & Swagger API**  
+  - 펀더멘털·뉴스·리스크·최종 의사결정 에이전트가 협업하여 심층 분석 리포트를 생성합니다. (`multi_agent.py`)  
+  - FastAPI 기반 `api.py` 서버를 통해 동일 기능을 REST/JSON으로 제공하며, 자동 생성되는 Swagger UI(`/docs`)와 OpenAPI 스키마(`/openapi.json`)를 제공합니다.
+
+- **RAG 문서 Q&A**  
+  - 업로드/서버 저장 PDF를 선택해 질문하면, OpenAI 임베딩과 FAISS 벡터스토어를 활용해 문서 맥락 기반 답변을 제공합니다.  
+  - 임시 파일을 자동 정리하고, 오류 발생 시 친절한 메시지를 표시합니다.
+
+- **자동 다이어그램 생성**  
+  - `diagram/visualize_graph.py` 스크립트로 LangGraph 워크플로우를 PNG로 렌더링할 수 있습니다.
+
+## 🧱 아키텍처 & 데이터 파이프라인
+
+- **Streamlit UI**  
+  - `메인.py`: 시장 대시보드 (지수/섹터/글로벌)  
+  - `pages/1_TOP_100.py`: 시총 상위 100  
+  - `pages/2_검색.py`: 종목 검색 + 기술적 지표 + LangGraph 분석  
+  - `pages/3_AI_심층분석.py`: RAG 기반 문서 질의
+
+- **데이터 서비스 (`data_fetcher.py`)**  
+  - `@st.cache_data`와 내부 `_LAST_SUCCESS_CACHE`를 결합해 pykrx 호출 실패 시 마지막 정상 데이터를 안전하게 재사용합니다.  
+  - pykrx 지수/섹터 데이터, DuckDuckGo 뉴스, Yahoo Finance 글로벌 스냅샷을 모듈화했습니다.
+
+- **기술적 지표 모듈 (`analytics/technical.py`)**  
+  - pandas rolling 연산으로 이동평균·거래량 평균을 계산하고, 괴리율·52주 고저 대비·최근 수익률을 딕셔너리 형태로 제공합니다.
+
+- **AI Agent (`agent.py`)**  
+  - LangGraph의 조건부 엣지를 사용해 분석→뉴스→보고서 플로우를 구성합니다.  
+  - LLM 응답 파싱, 뉴스 포맷팅, 임시 파일 관리 등 안정성을 강화했습니다.
+
+- **멀티 에이전트 & API**  
+  - `multi_agent.py`: 펀더멘털·뉴스·리스크·최종 의사결정을 담당하는 네 개의 LLM 에이전트가 협업합니다.  
+  - `api.py`: FastAPI + Swagger UI를 이용해 프로그램형 인터페이스를 제공합니다.
+
+## 📂 프로젝트 구조
 
 ```
 /모두의선물
-|-- 📂 deployments/
-|   |-- 📜 Dockerfile
-|   └── 📜 docker-compose.yml
-|-- 📂 diagram/
-|   ├── 📜 visualize_graph.py
-|   └── 🖼️ langgraph_flowchart.png
-|-- 📂 pages/
-|   ├── 📜 1_TOP100.py
-|   ├── 📜 2_검색.py
-|   └── 📜 3_AI_심층분석.py
-|-- 📂 reports/
-|   └── (분석용 PDF 파일 저장소)
-|-- 📜 .dockerignore
-|-- 📜 .env
-|-- 📜 메인.py
-|-- 📜 agent.py
-|-- 📜 data_fetcher.py
-|-- 📜 requirements.txt
+├── analytics/
+│   ├── __init__.py
+│   └── technical.py                # 이동평균, 거래량, 수익률 등 계산
+├── architecture/
+│   └── Readme.md
+├── diagram/
+│   ├── visualize_graph.py
+│   └── langgraph_flowchart.png
+├── deployments/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── pages/
+│   ├── 1_TOP_100.py
+│   ├── 2_검색.py
+│   └── 3_AI_심층분석.py
+├── reports/                        # 업로드/관리용 PDF 저장소
+├── .env                            # OPENAI_API_KEY 등 환경 변수
+├── .dockerignore
+├── .gitignore
+├── 메인.py                         # 메인 대시보드
+├── agent.py
+├── api.py                          # FastAPI 엔드포인트
+├── data_fetcher.py
+├── multi_agent.py                  # 협업 에이전트 오케스트레이터
+├── requirements.txt
+└── Readme.md
 ```
 
-## 🚀 설치 및 실행 방법 (Installation & Setup)
+## 🛠️ 설치 & 실행
 
-### 1\. 프로젝트 복제 (Clone Repository)
+### 1. 레포지토리 클론
 
 ```bash
 git clone <your-repository-url>
 cd 모두의선물
 ```
 
-### 2\. 시스템 의존성 설치 (Graphviz)
+### 2. 필수 시스템 의존성
 
-AI Agent 다이어그램 생성을 위해 `Graphviz`가 시스템에 설치되어 있어야 합니다.
+LangGraph 다이어그램 생성을 위해 Graphviz 라이브러리가 필요합니다.
 
-  * **macOS (Homebrew 사용 시):**
-    ```bash
-    brew install graphviz
-    ```
-  * **Ubuntu/Debian:**
-    ```bash
-    sudo apt-get update && sudo apt-get install -y graphviz libgraphviz-dev
-    ```
+- **macOS (Homebrew)**  
+  `brew install graphviz`
+- **Ubuntu/Debian**  
+  `sudo apt-get update && sudo apt-get install -y graphviz libgraphviz-dev`
 
-### 3\. 환경 변수 설정
+### 3. 환경 변수
 
-프로젝트 루트 디렉토리에 `.env` 파일을 생성하고 OpenAI API 키를 입력합니다.
-
-**📜 `.env`**
+루트 디렉토리에 `.env` 파일을 만들고 OpenAI API 키를 지정하세요.
 
 ```env
 OPENAI_API_KEY="sk-..."
 ```
 
-### 4\. Python 라이브러리 설치
+### 4. 파이썬 의존성 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-*macOS에서 `pygraphviz` 설치 오류 발생 시, 아래 명령어를 먼저 실행하세요.*
+> `requests` (Yahoo Finance), `duckduckgo-search` (뉴스), `pykrx`(시장 데이터), `faiss-cpu`(RAG), `fastapi`, `uvicorn` 등 네트워크 액세스가 필요합니다. 방화벽이 있는 환경이라면 허용 정책을 먼저 점검하세요.  
+> macOS에서 `pygraphviz` 설치가 실패할 경우:
+> - Apple Silicon: `LDFLAGS="-L/opt/homebrew/lib/" CPPFLAGS="-I/opt/homebrew/include/" pip install pygraphviz`
+> - Intel Mac: `LDFLAGS="-L$(brew --prefix graphviz)/lib" CPPFLAGS="-I$(brew --prefix graphviz)/include" pip install pygraphviz`
 
-  * *(Apple Silicon Mac)* `LDFLAGS="-L/opt/homebrew/lib/" CPPFLAGS="-I/opt/homebrew/include/" pip install pygraphviz`
-  * *(Intel Mac)* `LDFLAGS="-L$(brew --prefix graphviz)/lib" CPPFLAGS="-I$(brew --prefix graphviz)/include" pip install pygraphviz`
+### 5. 애플리케이션 실행
 
-### 5\. 애플리케이션 실행
-
-#### 방법 1: Docker Compose 사용 (권장)
-
-가장 간단하고 안정적인 실행 방법입니다.
+**옵션 A · Docker Compose (권장)**
 
 ```bash
-# -f 플래그로 compose 파일 경로 지정하여 실행
 docker-compose -f deployments/docker-compose.yml up --build
 ```
 
-#### 방법 2: Streamlit 직접 실행 (개발용)
+**옵션 B · 로컬 개발용 Streamlit**
 
 ```bash
-# (파일 이름을 '메인.py'로 변경했으므로)
 streamlit run 메인.py
 ```
 
-실행 후 웹 브라우저에서 **`http://localhost:8501`** 로 접속하세요.
+실행 후 브라우저에서 `http://localhost:8501` 접속.
 
-## 📖 사용 방법 (How to Use)
+**옵션 C · FastAPI 서버 (멀티 에이전트 & Swagger)**  
 
-  * **AI 종합 분석**: `검색` 메뉴에서 원하는 종목을 찾은 뒤, 'AI 종합 분석 시작하기' 버튼을 클릭하세요.
-  * **AI 심층 분석 (RAG)**: `reports` 폴더에 분석할 PDF 파일을 넣거나, `AI 심층 분석` 메뉴에서 직접 파일을 업로드하세요. 그 후, 문서 내용에 대한 질문을 입력하고 분석 버튼을 클릭하세요.
-  * **Agent 다이어그램 생성**: 프로젝트 구조를 시각화하고 싶을 때, 터미널에서 아래 명령어를 실행하세요. `diagram` 폴더 안에 `langgraph_flowchart.png` 파일이 생성됩니다.
+```bash
+uvicorn api:app --host 0.0.0.0 --port 8502 --reload
+```
+
+- Swagger UI: `http://localhost:8502/docs`  
+- ReDoc: `http://localhost:8502/redoc`  
+- OpenAPI 스키마: `http://localhost:8502/openapi.json`
+
+## 📖 사용 가이드
+
+- **시장 대시보드**  
+  - 상단 지표 카드에서 KOSPI/KOSDAQ/KOSPI200의 현재가·등락률을 확인하고, 추세 차트를 통해 최근 30일 흐름을 파악합니다.  
+  - “주요 섹터 흐름” 표로 상승/하락 업종을 살피고, “글로벌 선물 · 환율” 카드로 해외 지표 영향을 점검하세요.
+
+- **시가총액 Top 100**  
+  - pykrx 호출이 실패하더라도 마지막 성공 데이터를 보여주므로, 일시적인 API 오류 시에도 분석을 계속할 수 있습니다.
+
+- **종목 검색 & 기술적 분석**  
+  - 검색창에 키워드를 입력 후 종목을 선택하면, 가격·이동평균·거래량 지표가 카드와 표, 차트로 표시됩니다.  
+  - “AI 종합 분석” 버튼을 누르면 LangGraph 에이전트가 재무 지표와 최신 뉴스를 결합한 보고서를 생성합니다.
+
+- **AI 심층 분석 (RAG)**  
+  - `reports/` 폴더에 미리 넣어두거나, 페이지에서 직접 PDF를 업로드하세요.  
+  - 질문을 입력하면 RAG 체인이 문서 맥락을 기반으로 답변합니다. 임시 파일은 자동 정리되어 디스크가 깔끔하게 유지됩니다.
+
+- **LangGraph 다이어그램**  
+  - 에이전트 흐름을 시각화하려면 다음 명령을 실행하세요.
     ```bash
     python diagram/visualize_graph.py
     ```
+  - `diagram/langgraph_flowchart.png`가 생성됩니다.
+- **FastAPI 엔드포인트 활용**  
+  - `/analysis/multi-agent`: POST JSON `{ "stock_name": "삼성전자" }` → 멀티에이전트 분석 리포트  
+  - `/dashboard/overview`: GET → 시장 대시보드 데이터 (지수/섹터/글로벌 스냅샷)  
+  - `/market/top100`: GET → 시가총액 Top 100 리스트  
+  - Swagger UI에서 샘플 요청을 확인하고 바로 실행할 수 있습니다.
+
+## ✅ 검증 & 트러블슈팅
+
+- pykrx 또는 Yahoo Finance 호출이 빈번히 실패한다면  
+  - 네트워크 연결/프록시 설정을 확인하고, 실패 시 캐시 데이터가 표시되는지 로그(`streamlit run` 터미널)에서 확인하세요.
+- LangGraph 보고서가 생성되지 않으면  
+  - `.env`에 OpenAI 키가 설정되었는지, 요금제 한도가 남아있는지 점검하세요.
+- RAG 분석 오류  
+  - PDF가 암호화되어 있거나 페이지 수가 매우 많은 경우 chunk 분할이 오래 걸릴 수 있습니다. 필요한 일부 페이지만 발췌해 업로드하는 것을 권장합니다.
+- FastAPI 호출 오류  
+  - `422` 응답은 요청 파라미터가 잘못된 경우이므로 Swagger UI의 스키마 정의를 참고하세요.  
+  - `500` 응답이 지속되면 OpenAI API 키, 외부 네트워크 정책, pykrx 데이터 접근 권한을 점검하세요.
+
+## 📌 개발 노트
+
+- `data_fetcher._LAST_SUCCESS_CACHE`는 API 실패 시 사용자 경험을 보호하기 위한 로컬 메모리 캐시입니다. Streamlit 앱이 재시작되면 초기화됩니다.
+- `analytics/technical.py`는 pandas 기반 지표 계산만 담당합니다. 다른 페이지에서도 재사용할 수 있도록 설계했습니다.
+- LangGraph 플로우 및 멀티 에이전트 오케스트레이터는 확장성을 염두에 두고 작성되었기 때문에, 추가 뉴스 소스나 정량 지표 노드를 쉽게 삽입할 수 있습니다.
+
+필요한 기능이나 개선 아이디어가 있으면 Issues 또는 PR로 참여해 주세요! 🎉

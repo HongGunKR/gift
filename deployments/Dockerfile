@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5. .dockerignore에 명시된 파일을 제외한 나머지 프로젝트 파일 전체를 복사합니다.
 COPY . .
 
-# 6. 컨테이너 외부로 8501 포트를 노출합니다.
-EXPOSE 8501
+# 6. 컨테이너 외부로 Streamlit(8501)과 FastAPI(8502) 포트를 노출합니다.
+EXPOSE 8501 8502
 
 # 7. 컨테이너가 시작될 때 실행할 기본 명령어를 설정합니다.
 # (파일 이름을 '메인.py'로 변경하셨으므로, 여기에 반영합니다.)

@@ -1,6 +1,8 @@
 # main.py : 메인 대시보드 (홈 화면)
 
+import pandas as pd
 import streamlit as st
+
 import data_fetcher
 
 # 메뉴 순서 지정을 위한 CSS 코드
@@ -51,20 +53,81 @@ st.subheader("주요 지수 현황")
 market_indices_df = data_fetcher.get_market_indices()
 
 if not market_indices_df.empty:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(
-            label="KOSPI",
-            value=f"{market_indices_df['KOSPI'].iloc[-1]:,.2f}",
-            delta=f"{market_indices_df['KOSPI'].iloc[-1] - market_indices_df['KOSPI'].iloc[-2]:,.2f}"
+    latest_date = market_indices_df.index[-1]
+    st.caption(f"업데이트: {latest_date}")
+
+    latest_row = market_indices_df.iloc[-1]
+    previous_row = market_indices_df.iloc[-2] if len(market_indices_df) > 1 else latest_row
+    deltas = latest_row - previous_row
+    delta_pct = (
+        ((latest_row - previous_row) / previous_row.replace(0, pd.NA) * 100)
+        .fillna(0)
+        if len(market_indices_df) > 1
+        else pd.Series([0] * len(latest_row), index=market_indices_df.columns)
+    )
+
+    metric_columns = st.columns(len(market_indices_df.columns))
+    for idx, column in enumerate(market_indices_df.columns):
+        value = latest_row[column]
+        delta_value = deltas[column] if column in deltas else 0
+        delta_pct_value = delta_pct[column] if column in delta_pct else 0
+        metric_columns[idx].metric(
+            label=column,
+            value=f"{value:,.2f}",
+            delta=f"{delta_value:+,.2f} ({delta_pct_value:+.2f}%)",
         )
-    with col2:
-        st.metric(
-            label="KOSDAQ",
-            value=f"{market_indices_df['KOSDAQ'].iloc[-1]:,.2f}",
-            delta=f"{market_indices_df['KOSDAQ'].iloc[-1] - market_indices_df['KOSDAQ'].iloc[-2]:,.2f}"
-        )
-    
+
     st.line_chart(market_indices_df)
+
+    if len(market_indices_df) > 1:
+        summary_df = pd.DataFrame(
+            {
+                "현재가": latest_row,
+                "전일대비": deltas,
+                "등락률(%)": delta_pct,
+            }
+        )
+        st.dataframe(summary_df.style.format({"현재가": "{:,.2f}", "전일대비": "{:+,.2f}", "등락률(%)": "{:+,.2f}"}))
 else:
     st.error("지수 정보를 불러오는 데 실패했습니다.")
+
+# 2. 섹터 모니터링
+st.write("---")
+st.subheader("주요 섹터 흐름")
+sector_df = data_fetcher.get_sector_performance()
+if not sector_df.empty:
+    st.dataframe(
+        sector_df.style.format(
+            {"현재가": "{:,.2f}", "전일대비": "{:+,.2f}", "등락률(%)": "{:+,.2f}"}
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+else:
+    st.info("섹터 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
+
+# 3. 글로벌 선물 및 환율
+st.write("---")
+st.subheader("글로벌 선물 · 환율 스냅샷")
+global_snapshot = data_fetcher.get_global_market_snapshot()
+
+if global_snapshot:
+    chunk_size = 3
+    for i in range(0, len(global_snapshot), chunk_size):
+        chunk = global_snapshot[i : i + chunk_size]
+        cols = st.columns(len(chunk))
+        for col, item in zip(cols, chunk):
+            price = item.get("price")
+            change = item.get("change")
+            change_pct_value = item.get("change_pct")
+            if price is None:
+                col.metric(label=item["label"], value="데이터 없음", delta="N/A")
+                continue
+            delta_text = (
+                f"{change:+,.2f} ({change_pct_value:+.2f}%)"
+                if change is not None and change_pct_value is not None
+                else "변화 데이터 없음"
+            )
+            col.metric(label=item["label"], value=f"{price:,.2f}", delta=delta_text)
+else:
+    st.info("글로벌 선물 또는 환율 정보를 불러오지 못했습니다.")

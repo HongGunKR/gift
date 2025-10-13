@@ -1,75 +1,108 @@
 graph TD
+    %% 사용자 영역
     subgraph "사용자 영역"
-        A["👤 사용자 (웹 브라우저)"]
+        A["👤 웹 사용자<br/>(Streamlit UI)"]
+        A2["🧑‍💻 API 소비자<br/>(Swagger / HTTP Client)"]
     end
 
+    %% 배포 및 환경 관리
     subgraph "배포 및 환경 관리 (Docker Compose)"
         C(("Docker Compose"))
         D["📜 docker-compose.yml"]
         E["📜 Dockerfile"]
-        F["📝 .env (OPENAI_API_KEY)"]
+        F["📝 .env (OPENAI_API_KEY 등)"]
+        B[("Docker Hub<br/>Python Base Image")]
     end
 
+    %% Streamlit 애플리케이션 계층
     subgraph "애플리케이션 계층 (Streamlit App)"
         G["🚀 Streamlit Server<br/>(포트 8501)"]
-        G1("메인.py<br/>홈 대시보드")
-        G2("pages/1_TOP100.py<br/>Top 100")
-        G3("pages/2_검색.py<br/>검색 & LangGraph")
-        G4("pages/3_AI_심층분석.py<br/>심층 분석 RAG")
+        G1("메인.py<br/>시장 대시보드")
+        G2("pages/1_TOP_100.py<br/>시총 Top 100")
+        G3("pages/2_검색.py<br/>검색 & LangGraph 분석")
+        G4("pages/3_AI_심층분석.py<br/>RAG 문서 분석")
     end
 
-    subgraph "AI Agent & 데이터 로직"
-        H["🤖 agent.py<br/>(LangGraph & RAG Logic)"]
-        I["📜 data_fetcher.py<br/>(외부 데이터 연동)"]
+    %% FastAPI 계층
+    subgraph "API 계층 (FastAPI)"
+        P["🛰️ Uvicorn Server<br/>(포트 8502)"]
+        Q["📜 api.py<br/>REST + Swagger UI"]
     end
 
+    %% AI / 데이터 로직
+    subgraph "AI 멀티 에이전트 & 데이터 로직"
+        H["🤖 agent.py<br/>(LangGraph Workflow)"]
+        H2["🤝 multi_agent.py<br/>(펀더멘털·뉴스·리스크 협업)"]
+        I["📜 data_fetcher.py<br/>(시장·뉴스·글로벌 데이터)"]
+        R["📊 analytics/technical.py<br/>(기술적 지표 계산)"]
+    end
+
+    %% 외부 데이터 소스 & 저장소
     subgraph "외부 데이터 소스 및 저장소"
-        J[("pykrx API<br/>주식 데이터")]
+        J[("pykrx API<br/>국내 주식 데이터")]
         K[("DuckDuckGo Search API<br/>뉴스 검색")]
         L[("OpenAI API<br/>LLM 서비스")]
-        M["/📂 reports/<br/>(PDF 문서 저장소)/"]
+        Y[("Yahoo Finance Quotes<br/>글로벌 선물/환율")]
+        M["/📂 reports/<br/>(PDF 저장소)"]
     end
 
-    subgraph "다이어그램 생성 (로컬 유틸리티)"
-        N["📜 visualize_graph.py"]
-        O["/🖼️ langgraph_flowchart.png/"]
+    %% 다이어그램 및 개발 유틸리티
+    subgraph "다이어그램 & 개발 유틸리티"
+        N["📜 diagram/visualize_graph.py<br/>LangGraph 시각화 CLI"]
+        O["🖼️ diagram/langgraph_flowchart.(png|svg)"]
     end
 
-
-    %% 흐름 정의
+    %% 사용자 → 애플리케이션 흐름
     A -- "HTTP 요청" --> G
+    A2 -- "REST 호출 / Swagger" --> P
+    P --> Q
 
-    %% Docker Build/Run 흐름
+    %% Docker Compose 빌드/실행
     A -- "'docker-compose up --build' 실행" --> C
-    C -- "Dockerfile, .env, 프로젝트 소스 참조" --> E
-    E -- "시스템 의존성 (Graphviz) 설치" --> B{"Docker Hub<br/>(Base Image)"}
+    C -- "구성 참조" --> D
+    C -- "빌드 컨텍스트" --> E
+    E -- "베이스 이미지" --> B
+    E -- "시스템 의존성 (Graphviz 등) 설치" --> B
     E -- "Python 패키지 설치" --> C
-    C -- "'modu-gift' 이미지 빌드" --> G
-    C -- "환경 변수 전달" --> F
-    C -- "포트 매핑 (8501)" --> A
-    C -- "볼륨 마운트" --> M
+    C -- "환경 변수 주입" --> F
+    C -- "보고서 볼륨 마운트" --> M
+    C -- "Streamlit 컨테이너 기동" --> G
+    C -- "Uvicorn 컨테이너 기동" --> P
+    C -- "포트 노출 (8501, 8502)" --> A
+    C -- "포트 노출 (Swagger)" --> A2
 
-    %% Streamlit UI 흐름
+    %% Streamlit 페이지 호출
     G -- "페이지 선택" --> G1
     G -- "페이지 선택" --> G2
     G -- "페이지 선택" --> G3
     G -- "페이지 선택" --> G4
 
-    %% 데이터 흐름
-    G1 -- "데이터 요청" --> I
-    G2 -- "데이터 요청" --> I
-    G3 -- "데이터 요청" --> I
-    I -- "주식 데이터 요청" --> J
-    I -- "뉴스 검색 요청" --> K
+    %% 데이터 로직 연결
+    G1 -- "지수/섹터/글로벌 데이터 요청" --> I
+    G2 -- "시총 Top100 요청" --> I
+    G3 -- "종목·기술 지표 요청" --> I
+    G3 -- "이동평균 계산" --> R
+    G4 -- "PDF 분석 요청" --> H
 
-    %% AI Agent 흐름
-    G3 -- "종목 분석 요청" --> H
-    G4 -- "PDF 문서 분석 요청" --> H
-    H -- "데이터 요청 (툴 사용)" --> I
+    %% LangGraph 에이전트 흐름
+    G3 -- "LangGraph 분석" --> H
+    H -- "데이터 조회" --> I
     H -- "PDF 로드" --> M
     H -- "LLM 호출" --> L
 
-    %% 다이어그램 생성 흐름
-    A -- "'python diagram/visualize_graph.py' 실행" --> N
-    N -- "agent.py 구조 분석" --> H
-    N -- "다이어그램 로컬 렌더링 (Pyppeteer)" --> O
+    %% 멀티 에이전트 API 흐름
+    Q -- "REST Endpoints" --> H2
+    H2 -- "시장 데이터/뉴스 요청" --> I
+    H2 -- "LLM 호출" --> L
+    H2 -- "뉴스 요약" --> K
+    H2 -- "기초 데이터" --> J
+
+    %% 외부 데이터 호출
+    I -- "시장 데이터" --> J
+    I -- "뉴스 검색" --> K
+    I -- "글로벌 시세" --> Y
+
+    %% 다이어그램 CLI 흐름
+    A -- "'python3 diagram/visualize_graph.py --format png --output diagram/langgraph.png' 실행" --> N
+    N -- "agent.py 그래프 로딩" --> H
+    N -- "Mermaid 렌더링 (Pyppeteer)" --> O

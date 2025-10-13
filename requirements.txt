@@ -4,7 +4,10 @@ pandas
 langchain
 langchain-openai
 duckduckgo-search    # 뉴스
+requests
 langchain-community
+fastapi
+uvicorn[standard]
 pypdf                # PDF 파일 처리
 faiss-cpu            # 벡터 저장소(cpu버전)
 langgraph
