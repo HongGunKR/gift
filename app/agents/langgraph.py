@@ -125,28 +125,37 @@ def initial_analysis_node(state: AgentState):
 def search_positive_news_node(state: AgentState):
     """호재성 뉴스를 검색하는 노드"""
     logger.info("search_positive_news node invoked", extra={"stock": state["stock_name"]})
-    query = f"{state['stock_name']} 호재 전망 신제품"
-    news = data_fetcher.search_news(query)
-    if not news:
-        news = data_fetcher.search_news(state["stock_name"])
-    return {"news": news or []}
+    queries = [f"{state['stock_name']} 호재 전망 신제품", state["stock_name"]]
+    batches = data_fetcher.search_news_batch(queries)
+    for query in queries:
+        news = batches.get(query)
+        if news:
+            return {"news": news}
+    return {"news": []}
 
 
 def search_negative_news_node(state: AgentState):
     """악재성 뉴스를 검색하는 노드"""
     logger.info("search_negative_news node invoked", extra={"stock": state["stock_name"]})
-    query = f"{state['stock_name']} 악재 리스크 우려"
-    news = data_fetcher.search_news(query)
-    if not news:
-        news = data_fetcher.search_news(state["stock_name"])
-    return {"news": news or []}
+    queries = [f"{state['stock_name']} 악재 리스크 우려", state["stock_name"]]
+    batches = data_fetcher.search_news_batch(queries)
+    for query in queries:
+        news = batches.get(query)
+        if news:
+            return {"news": news}
+    return {"news": []}
 
 
 def search_general_news_node(state: AgentState):
     """일반 뉴스를 검색하는 노드"""
     logger.info("search_general_news node invoked", extra={"stock": state["stock_name"]})
-    news = data_fetcher.search_news(f"{state['stock_name']} 주가")
-    return {"news": news or []}
+    queries = [f"{state['stock_name']} 주가", state["stock_name"]]
+    batches = data_fetcher.search_news_batch(queries)
+    for query in queries:
+        news = batches.get(query)
+        if news:
+            return {"news": news}
+    return {"news": []}
 
 
 def final_report_node(state: AgentState):

@@ -1,9 +1,11 @@
 """FastAPI 서버: Swagger 기반 API 문서 제공."""
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -65,7 +67,7 @@ app.add_middleware(
 
 
 @app.get("/health", summary="상태 점검")
-def health_check() -> Dict[str, str]:
+async def health_check() -> Dict[str, str]:
     return {"status": "ok"}
 
 
@@ -74,11 +76,13 @@ def health_check() -> Dict[str, str]:
     response_model=MarketOverviewModel,
     summary="시장 대시보드 데이터 조회",
 )
-def get_dashboard_overview() -> MarketOverviewModel:
+async def get_dashboard_overview() -> MarketOverviewModel:
     try:
-        indices_df = data_fetcher.get_market_indices()
-        sectors_df = data_fetcher.get_sector_performance()
-        global_snapshot = data_fetcher.get_global_market_snapshot()
+        indices_df, sectors_df, global_snapshot = await asyncio.gather(
+            run_in_threadpool(data_fetcher.get_market_indices),
+            run_in_threadpool(data_fetcher.get_sector_performance),
+            run_in_threadpool(data_fetcher.get_global_market_snapshot),
+        )
 
         indices = _frame_to_records(indices_df)
         sectors = (
@@ -99,12 +103,14 @@ def get_dashboard_overview() -> MarketOverviewModel:
     response_model=MultiAgentResponseModel,
     summary="멀티 에이전트 종목 분석 실행",
 )
-def analyze_with_multi_agent(
+async def analyze_with_multi_agent(
     payload: MultiAgentRequestModel,
 ) -> MultiAgentResponseModel:
     try:
-        result: MultiAgentResult = run_multi_agent_analysis(
-            stock_name=payload.stock_name, ticker=payload.ticker
+        result: MultiAgentResult = await run_in_threadpool(
+            run_multi_agent_analysis,
+            stock_name=payload.stock_name,
+            ticker=payload.ticker,
         )
         return MultiAgentResponseModel(**result)
     except Exception as exc:
@@ -115,9 +121,9 @@ def analyze_with_multi_agent(
     "/market/top100",
     summary="시가총액 Top 100 데이터 조회",
 )
-def get_top_100() -> List[Dict[str, Any]]:
+async def get_top_100() -> List[Dict[str, Any]]:
     try:
-        top_df = data_fetcher.get_top_100_market_cap_stocks()
+        top_df = await run_in_threadpool(data_fetcher.get_top_100_market_cap_stocks)
         return top_df.reset_index().rename(columns={"index": "rank"}).to_dict(
             orient="records"
         )

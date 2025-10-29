@@ -4,6 +4,7 @@ import copy
 import functools
 import json
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -63,6 +64,10 @@ PERSISTENT_CACHE_DIR = Path(".cache")
 PERSISTENT_CACHE_DIR.mkdir(exist_ok=True)
 GLOBAL_SNAPSHOT_CACHE_FILE = PERSISTENT_CACHE_DIR / "global_snapshot.json"
 GLOBAL_SNAPSHOT_CACHE_TTL = 60 * 15  # 15분
+
+_NEWS_LOCK = threading.Lock()
+_LAST_NEWS_TIMESTAMP = 0.0
+_NEWS_MIN_INTERVAL = 0.4  # DDG 요청 간 최소 간격(초)
 
 
 def _has_streamlit_runtime() -> bool:
@@ -386,38 +391,81 @@ def get_financial_ratios(ticker: str) -> Dict[str, Any]:
         return _fallback_result(key, {})
 
 
+def _throttle_news_requests() -> None:
+    global _LAST_NEWS_TIMESTAMP
+    with _NEWS_LOCK:
+        now = time.time()
+        wait_for = _NEWS_MIN_INTERVAL - (now - _LAST_NEWS_TIMESTAMP)
+        if wait_for > 0:
+            time.sleep(wait_for)
+        _LAST_NEWS_TIMESTAMP = time.time()
+
+
+def _search_news_raw(keyword: str) -> List[Dict[str, str]]:
+    _throttle_news_requests()
+    with DDGS() as ddgs:
+        results = list(
+            ddgs.news(
+                keywords=f"{keyword} 주가",
+                region="kr-kr",
+                safesearch="off",
+                timelimit="m",
+                max_results=5,
+            )
+        )
+
+    if not results:
+        return []
+
+    return [
+        {
+            "title": (r.get("title") or "").strip(),
+            "snippet": (r.get("body") or "").strip(),
+            "link": r.get("link", ""),
+        }
+        for r in results
+    ]
+
+
+@cache_data_or_lru(ttl=300, show_spinner=False)
 def search_news(stock_name: str) -> List[Dict[str, str]]:
     """
     DuckDuckGo Search를 이용해 최신 뉴스를 검색합니다.
+    동일 쿼리 반복 시 캐싱해 외부 API 호출량을 줄입니다.
     """
     try:
-        with DDGS() as ddgs:
-            results = list(
-                ddgs.news(
-                    keywords=f"{stock_name} 주가",
-                    region="kr-kr",
-                    safesearch="off",
-                    timelimit="m",
-                    max_results=5,
-                )
-            )
-
-        if not results:
-            return []
-
-        return [
-            {
-                "title": (r.get("title") or "").strip(),
-                "snippet": (r.get("body") or "").strip(),
-                "link": r.get("link", ""),
-            }
-            for r in results
-        ]
+        return _search_news_raw(stock_name)
     except Exception as exc:
         logger.warning(
             "search_news failed", extra={"stock_name": stock_name, "error": str(exc)}
         )
         return []
+
+
+def search_news_batch(queries: List[str]) -> Dict[str, List[Dict[str, str]]]:
+    """
+    여러 키워드에 대해 동시에 뉴스를 검색합니다.
+    각 쿼리별 결과 리스트를 딕셔너리로 반환합니다.
+    """
+    unique_queries: List[str] = list(dict.fromkeys(q for q in queries if q))
+    if not unique_queries:
+        return {}
+
+    results: Dict[str, List[Dict[str, str]]] = {}
+    with ThreadPoolExecutor(max_workers=min(len(unique_queries), 3)) as executor:
+        futures = {executor.submit(search_news, query): query for query in unique_queries}
+        for future in as_completed(futures):
+            query = futures[future]
+            try:
+                results[query] = future.result()
+            except Exception as exc:
+                logger.warning(
+                    "search_news_batch failed",
+                    extra={"query": query, "error": str(exc)},
+                )
+                results[query] = []
+
+    return results
 
 
 @cache_data_or_lru(ttl=900, show_spinner=False)
@@ -525,6 +573,7 @@ __all__ = [
     "search_stocks_by_keyword",
     "get_financial_ratios",
     "search_news",
+    "search_news_batch",
     "get_sector_performance",
     "get_global_market_snapshot",
     "get_last_data_error",

@@ -59,7 +59,7 @@
 
 - **멀티 에이전트 & API**  
   - `app/agents/multi_agent.py`: 펀더멘털·뉴스·리스크·최종 의사결정을 담당하는 네 개의 LLM 에이전트가 협업합니다.  
-  - `app/web/api.py`: FastAPI + Swagger UI를 이용해 프로그램형 인터페이스를 제공합니다.
+  - `app/web/api.py`: FastAPI + Swagger UI를 이용한 비동기(Async) 프로그램형 인터페이스를 제공합니다.
 
 ## 📂 프로젝트 구조
 

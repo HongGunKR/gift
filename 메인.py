@@ -51,6 +51,7 @@ st.write("---")
 # 1. 주요 지수 현황
 st.subheader("주요 지수 현황")
 market_indices_df = data_fetcher.get_market_indices()
+indices_error = data_fetcher.get_last_data_error("market_indices")
 
 if not market_indices_df.empty:
     latest_date = market_indices_df.index[-1]
@@ -88,13 +89,19 @@ if not market_indices_df.empty:
             }
         )
         st.dataframe(summary_df.style.format({"현재가": "{:,.2f}", "전일대비": "{:+,.2f}", "등락률(%)": "{:+,.2f}"}))
+    if indices_error:
+        brief_error = indices_error.split(" (Caused", 1)[0]
+        st.caption(f"⚠️ 지수 데이터 조회 오류: {brief_error}")
 else:
     st.error("지수 정보를 불러오는 데 실패했습니다.")
+    if indices_error:
+        st.caption(f"⚠️ 지수 데이터 조회 오류: {indices_error}")
 
 # 2. 섹터 모니터링
 st.write("---")
 st.subheader("주요 섹터 흐름")
 sector_df = data_fetcher.get_sector_performance()
+sector_error = data_fetcher.get_last_data_error("sector_performance::5")
 if not sector_df.empty:
     st.dataframe(
         sector_df.style.format(
@@ -103,8 +110,13 @@ if not sector_df.empty:
         hide_index=True,
         use_container_width=True,
     )
+    if sector_error:
+        brief_error = sector_error.split(" (Caused", 1)[0]
+        st.caption(f"⚠️ 섹터 데이터 조회 오류: {brief_error}")
 else:
     st.info("섹터 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
+    if sector_error:
+        st.caption(f"⚠️ 섹터 데이터 조회 오류: {sector_error}")
 
 # 3. 글로벌 선물 및 환율
 st.write("---")
