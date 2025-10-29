@@ -222,5 +222,3 @@ uvicorn app.web.api:app --host 0.0.0.0 --port 8502 --reload
 - LangGraph 플로우 및 멀티 에이전트 오케스트레이터는 확장성을 염두에 두고 작성되었기 때문에, 추가 뉴스 소스나 정량 지표 노드를 쉽게 삽입할 수 있습니다.
 - `app/agents/langgraph.py`와 `app/services/data_fetcher.py`는 `logging` 모듈을 사용하므로 환경 설정으로 로그 레벨/핸들러를 자유롭게 조정할 수 있습니다.
 - `pytest` 설치 후 `pytest` 명령으로 기본 테스트(`tests/test_data_fetcher.py`)를 실행해 글로벌 데이터 폴백 동작을 검증할 수 있습니다.
-
-필요한 기능이나 개선 아이디어가 있으면 Issues 또는 PR로 참여해 주세요! 🎉
