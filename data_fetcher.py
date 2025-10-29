@@ -1,7 +1,12 @@
 """데이터 수집 및 가공 유틸리티."""
 
 import copy
+import functools
+import json
+import logging
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -10,8 +15,16 @@ import streamlit as st
 from duckduckgo_search import DDGS
 from pykrx import stock
 
+try:
+    from streamlit.runtime.scriptrunner import get_script_run_ctx
+except Exception:  # pragma: no cover - streamlit runtime 모듈 미배포 환경 대비
+    get_script_run_ctx = None
+
+logger = logging.getLogger(__name__)
+
 # pykrx 호출 실패 시 마지막 정상 데이터를 재사용하기 위한 임시 캐시
 _LAST_SUCCESS_CACHE: Dict[str, Any] = {}
+_LAST_ERRORS: Dict[str, str] = {}
 
 # 대시보드에 표시할 주요 지수 코드
 _ADDITIONAL_INDEX_TARGETS = {
@@ -37,6 +50,50 @@ _GLOBAL_SYMBOLS = {
     "USD/KRW": "KRW=X",
 }
 
+_REQUEST_SESSION = requests.Session()
+_REQUEST_SESSION.headers.update(
+    {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+)
+
+PERSISTENT_CACHE_DIR = Path(".cache")
+PERSISTENT_CACHE_DIR.mkdir(exist_ok=True)
+GLOBAL_SNAPSHOT_CACHE_FILE = PERSISTENT_CACHE_DIR / "global_snapshot.json"
+GLOBAL_SNAPSHOT_CACHE_TTL = 60 * 15  # 15분
+
+
+def _has_streamlit_runtime() -> bool:
+    if get_script_run_ctx is None:
+        return False
+    try:
+        return get_script_run_ctx() is not None
+    except RuntimeError:
+        return False
+
+
+def cache_data_or_lru(*cache_args, **cache_kwargs):
+    """
+    Streamlit 런타임에서는 st.cache_data를, 그 외 환경(FastAPI 실행 등)에서는 lru_cache를 사용합니다.
+    """
+
+    def decorator(func):
+        lru_cached = functools.lru_cache(maxsize=None)(func)
+        streamlit_cached = {"fn": None}
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if _has_streamlit_runtime():
+                if streamlit_cached["fn"] is None:
+                    streamlit_cached["fn"] = st.cache_data(*cache_args, **cache_kwargs)(func)
+                return streamlit_cached["fn"](*args, **kwargs)
+            return lru_cached(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
 
 def _deep_copy(value: Any) -> Any:
     if isinstance(value, pd.DataFrame):
@@ -58,6 +115,78 @@ def _fallback_result(key: str, default: Any) -> Any:
     return default
 
 
+def _record_error(key: str, message: Optional[str]) -> None:
+    if message:
+        _LAST_ERRORS[key] = message
+    else:
+        _LAST_ERRORS.pop(key, None)
+
+
+def get_last_data_error(key: str) -> Optional[str]:
+    return _LAST_ERRORS.get(key)
+
+
+def _build_global_snapshot_placeholder() -> List[Dict[str, Any]]:
+    return [
+        {
+            "label": label,
+            "price": None,
+            "change": None,
+            "change_pct": None,
+            "source": "Yahoo Finance",
+            "timestamp": None,
+        }
+        for label in _GLOBAL_SYMBOLS
+    ]
+
+
+def _request_with_retry(url: str, params: Dict[str, Any], retries: int = 3, backoff: float = 1.5) -> Dict[str, Any]:
+    last_exc: Optional[Exception] = None
+    for attempt in range(retries):
+        try:
+            response = _REQUEST_SESSION.get(url, params=params, timeout=8)
+            if response.status_code == 429 and attempt < retries - 1:
+                sleep_for = backoff**attempt
+                logger.info(
+                    "Yahoo Finance rate limited request; retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "retries": retries,
+                        "sleep_for": sleep_for,
+                    },
+                )
+                time.sleep(sleep_for)
+                continue
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                sleep_for = backoff ** attempt
+                time.sleep(sleep_for)
+            else:
+                raise
+    raise last_exc  # pragma: no cover
+
+
+def _load_persistent_snapshot() -> Optional[List[Dict[str, Any]]]:
+    if not GLOBAL_SNAPSHOT_CACHE_FILE.exists():
+        return None
+    try:
+        raw = json.loads(GLOBAL_SNAPSHOT_CACHE_FILE.read_text(encoding="utf-8"))
+        timestamp = raw.get("timestamp")
+        if timestamp and time.time() - float(timestamp) > GLOBAL_SNAPSHOT_CACHE_TTL:
+            return None
+        return raw.get("data")
+    except Exception:
+        return None
+
+
+def _save_persistent_snapshot(data: List[Dict[str, Any]]) -> None:
+    payload = {"timestamp": time.time(), "data": data}
+    GLOBAL_SNAPSHOT_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
 def _get_index_frame(start_date: str, end_date: str, ticker: str, label: str) -> pd.DataFrame:
     frame = stock.get_index_ohlcv_by_date(start_date, end_date, ticker)
     return frame["종가"].to_frame(label)
@@ -71,11 +200,14 @@ def _find_index_ticker(target_name: str, date: str) -> Optional[str]:
                 if stock.get_index_ticker_name(ticker) == target_name:
                     return ticker
     except Exception as exc:
-        print(f"Failed to resolve index ticker for {target_name}: {exc}")
+        logger.warning(
+            "Failed to resolve index ticker",
+            extra={"target": target_name, "error": str(exc)},
+        )
     return None
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@cache_data_or_lru(ttl=900, show_spinner=False)
 def get_market_indices() -> pd.DataFrame:
     """
     최근 한 달간의 주요 지수 종가를 반환합니다.
@@ -90,16 +222,22 @@ def get_market_indices() -> pd.DataFrame:
                 frame = _get_index_frame(start_date, today, ticker, label)
                 frames.append(frame)
             except Exception as inner_exc:
-                print(f"Failed to load index {label} ({ticker}): {inner_exc}")
+                logger.warning(
+                    "Failed to load index component",
+                    extra={"label": label, "ticker": ticker, "error": str(inner_exc)},
+                )
 
         if not frames:
             raise RuntimeError("No index data available")
 
         indices_df = pd.concat(frames, axis=1)
         indices_df.index = indices_df.index.strftime("%Y-%m-%d")
-        return _remember_result(key, indices_df)
+        result = _remember_result(key, indices_df)
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_market_indices error: {exc}")
+        logger.warning("get_market_indices failed", exc_info=exc)
+        _record_error(key, str(exc))
         return _fallback_result(key, pd.DataFrame())
 
 
@@ -128,7 +266,7 @@ def _load_top_100_market_cap_stocks() -> pd.DataFrame:
     return df_final
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@cache_data_or_lru(ttl=900, show_spinner=False)
 def get_top_100_market_cap_stocks() -> pd.DataFrame:
     """
     시가총액 상위 100개 종목 정보를 반환합니다.
@@ -136,13 +274,16 @@ def get_top_100_market_cap_stocks() -> pd.DataFrame:
     key = "top_100"
     try:
         df_final = _load_top_100_market_cap_stocks()
-        return _remember_result(key, df_final)
+        result = _remember_result(key, df_final)
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_top_100_market_cap_stocks error: {exc}")
+        logger.warning("get_top_100_market_cap_stocks failed", exc_info=exc)
+        _record_error(key, str(exc))
         return _fallback_result(key, pd.DataFrame())
 
 
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 6)
+@cache_data_or_lru(show_spinner=False, ttl=60 * 60 * 6)
 def get_stock_name_ticker_map() -> Dict[str, str]:
     """
     종목명-티커 매핑을 캐싱하여 반환합니다.
@@ -153,9 +294,12 @@ def get_stock_name_ticker_map() -> Dict[str, str]:
         tickers_kosdaq = stock.get_market_ticker_list(market="KOSDAQ")
         all_tickers = tickers_kospi + tickers_kosdaq
         name_ticker_map = {stock.get_market_ticker_name(ticker): ticker for ticker in all_tickers}
-        return _remember_result(key, name_ticker_map)
+        result = _remember_result(key, name_ticker_map)
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_stock_name_ticker_map error: {exc}")
+        logger.warning("get_stock_name_ticker_map failed", exc_info=exc)
+        _record_error(key, str(exc))
         return _fallback_result(key, {})
 
 
@@ -180,7 +324,10 @@ def get_stock_info_by_name(stock_name: str) -> Tuple[Optional[pd.DataFrame], Opt
 
         return _remember_result(key, df), ticker
     except Exception as exc:
-        print(f"get_stock_info_by_name error ({stock_name}, {ticker}): {exc}")
+        logger.warning(
+            "get_stock_info_by_name failed",
+            extra={"stock_name": stock_name, "ticker": ticker, "error": str(exc)},
+        )
         fallback = _fallback_result(key, None)
         if fallback is not None:
             return fallback, ticker
@@ -196,7 +343,7 @@ def search_stocks_by_keyword(keyword: str) -> List[str]:
     return [name for name in name_ticker_map.keys() if keyword_lower in name.lower()]
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@cache_data_or_lru(ttl=900, show_spinner=False)
 def get_financial_ratios(ticker: str) -> Dict[str, Any]:
     """
     최신 재무 지표를 반환합니다.
@@ -206,9 +353,14 @@ def get_financial_ratios(ticker: str) -> Dict[str, Any]:
         latest_day = stock.get_nearest_business_day_in_a_week()
         df = stock.get_market_fundamental_by_ticker(latest_day)
         ratios = df.loc[ticker].to_dict()
-        return _remember_result(key, ratios)
+        result = _remember_result(key, ratios)
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_financial_ratios error ({ticker}): {exc}")
+        logger.warning(
+            "get_financial_ratios failed", extra={"ticker": ticker, "error": str(exc)}
+        )
+        _record_error(key, str(exc))
         return _fallback_result(key, {})
 
 
@@ -240,11 +392,13 @@ def search_news(stock_name: str) -> List[Dict[str, str]]:
             for r in results
         ]
     except Exception as exc:
-        print(f"뉴스 검색 중 오류 발생: {exc}")
+        logger.warning(
+            "search_news failed", extra={"stock_name": stock_name, "error": str(exc)}
+        )
         return []
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@cache_data_or_lru(ttl=900, show_spinner=False)
 def get_sector_performance(top_n: int = 5) -> pd.DataFrame:
     """
     주도 섹터의 하루 등락률을 계산해 반환합니다.
@@ -278,7 +432,10 @@ def get_sector_performance(top_n: int = 5) -> pd.DataFrame:
                     }
                 )
             except Exception as inner_exc:
-                print(f"Failed to load sector data for {sector_name}: {inner_exc}")
+                logger.warning(
+                    "Failed to load sector data",
+                    extra={"sector": sector_name, "error": str(inner_exc)},
+                )
 
         if not rows:
             raise RuntimeError("No sector data retrieved")
@@ -286,26 +443,26 @@ def get_sector_performance(top_n: int = 5) -> pd.DataFrame:
         df = pd.DataFrame(rows)
         df.sort_values("등락률(%)", ascending=False, inplace=True)
         df.reset_index(drop=True, inplace=True)
-        return _remember_result(key, df.head(top_n))
+        result = _remember_result(key, df.head(top_n))
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_sector_performance error: {exc}")
+        logger.warning("get_sector_performance failed", exc_info=exc)
+        _record_error(key, str(exc))
         return _fallback_result(key, pd.DataFrame())
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@cache_data_or_lru(ttl=600, show_spinner=False)
 def get_global_market_snapshot() -> List[Dict[str, Any]]:
     """
     글로벌 선물/환율 스냅샷을 반환합니다.
     """
     key = "global_market_snapshot"
     try:
-        response = requests.get(
+        payload = _request_with_retry(
             "https://query1.finance.yahoo.com/v7/finance/quote",
             params={"symbols": ",".join(_GLOBAL_SYMBOLS.values())},
-            timeout=5,
         )
-        response.raise_for_status()
-        payload = response.json()
         results = payload.get("quoteResponse", {}).get("result", [])
 
         snapshot: List[Dict[str, Any]] = []
@@ -330,7 +487,17 @@ def get_global_market_snapshot() -> List[Dict[str, Any]]:
         if not snapshot:
             raise RuntimeError("Empty snapshot response")
 
-        return _remember_result(key, snapshot)
+        _save_persistent_snapshot(snapshot)
+        result = _remember_result(key, snapshot)
+        _record_error(key, None)
+        return result
     except Exception as exc:
-        print(f"get_global_market_snapshot error: {exc}")
-        return _fallback_result(key, [])
+        logger.warning("get_global_market_snapshot failed", exc_info=exc)
+        _record_error(key, str(exc))
+        fallback = _fallback_result(key, None)
+        if fallback:
+            return fallback
+        persistent = _load_persistent_snapshot()
+        if persistent:
+            return persistent
+        return _build_global_snapshot_placeholder()

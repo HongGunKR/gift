@@ -110,6 +110,7 @@ else:
 st.write("---")
 st.subheader("글로벌 선물 · 환율 스냅샷")
 global_snapshot = data_fetcher.get_global_market_snapshot()
+snapshot_error = data_fetcher.get_last_data_error("global_market_snapshot")
 
 if global_snapshot:
     chunk_size = 3
@@ -129,5 +130,8 @@ if global_snapshot:
                 else "변화 데이터 없음"
             )
             col.metric(label=item["label"], value=f"{price:,.2f}", delta=delta_text)
+    if snapshot_error:
+        brief_error = snapshot_error.split(" (Caused", 1)[0]
+        st.caption(f"⚠️ 글로벌 데이터 조회 오류: {brief_error}")
 else:
     st.info("글로벌 선물 또는 환율 정보를 불러오지 못했습니다.")

@@ -30,6 +30,11 @@
 
 - **자동 다이어그램 생성**  
   - `diagram/visualize_graph.py` 스크립트로 LangGraph 워크플로우를 PNG로 렌더링할 수 있습니다.
+- **고가용성 데이터 파이프라인**  
+  - 글로벌 지표는 메모리 및 디스크(JSON) 캐시에 동시 저장되며, 외부 API가 429/네트워크 오류를 반환해도 마지막 성공 데이터를 즉시 복원합니다.  
+  - Yahoo Finance 호출은 지수형 백오프를 적용해 자체적으로 3회 재시도하며, 실패 원인은 UI 캡션과 로그로 모두 확인할 수 있습니다.
+- **기본 테스트 스위트**  
+  - `tests/test_data_fetcher.py`로 글로벌 데이터 실패 시 플레이스홀더가 안전하게 반환되는지 검증합니다.
 
 ## 🧱 아키텍처 & 데이터 파이프라인
 
@@ -40,8 +45,10 @@
   - `pages/3_AI_심층분석.py`: RAG 기반 문서 질의
 
 - **데이터 서비스 (`data_fetcher.py`)**  
-  - `@st.cache_data`와 내부 `_LAST_SUCCESS_CACHE`를 결합해 pykrx 호출 실패 시 마지막 정상 데이터를 안전하게 재사용합니다.  
-  - pykrx 지수/섹터 데이터, DuckDuckGo 뉴스, Yahoo Finance 글로벌 스냅샷을 모듈화했습니다.
+  - Streamlit 실행 여부를 감지해 `st.cache_data` 또는 `functools.lru_cache`를 투명하게 선택, FastAPI 단독 실행 시에도 동일한 캐싱을 제공합니다.  
+  - pykrx/뉴스/글로벌 데이터는 메모리 캐시와 `.cache/global_snapshot.json` 디스크 캐시를 함께 사용해 장애 복원력을 높였습니다.  
+  - `logging` 기반 구조화 로그와 `get_last_data_error` 헬퍼를 제공해 UI/백엔드에서 오류 원인을 즉시 확인할 수 있습니다.
+- pykrx 지수/섹터 데이터, DuckDuckGo 뉴스, Yahoo Finance 글로벌 스냅샷을 모듈화했습니다.
 
 - **기술적 지표 모듈 (`analytics/technical.py`)**  
   - pandas rolling 연산으로 이동평균·거래량 평균을 계산하고, 괴리율·52주 고저 대비·최근 수익률을 딕셔너리 형태로 제공합니다.
@@ -69,6 +76,7 @@
 ├── deployments/
 │   ├── Dockerfile
 │   └── docker-compose.yml
+├── tests/                         # 단위/통합 테스트
 ├── pages/
 │   ├── 1_TOP_100.py
 │   ├── 2_검색.py
@@ -92,7 +100,7 @@
 
 ```bash
 git clone https://github.com/HongGunKR/gift
-cd 모두의선물
+cd gift
 ```
 
 ### 2. 필수 시스템 의존성
@@ -164,7 +172,8 @@ uvicorn api:app --host 0.0.0.0 --port 8502 --reload
 
 - **AI 심층 분석 (RAG)**  
   - `reports/` 폴더에 미리 넣어두거나, 페이지에서 직접 PDF를 업로드하세요.  
-  - 질문을 입력하면 RAG 체인이 문서 맥락을 기반으로 답변합니다. 임시 파일은 자동 정리되어 디스크가 깔끔하게 유지됩니다.
+  - 질문을 입력하면 RAG 체인이 문서 맥락을 기반으로 답변합니다. 임시 파일은 자동 정리되어 디스크가 깔끔하게 유지됩니다.  
+  - RAG 파이프라인 진행 상황과 오류는 `logging` 모듈로 기록되어 FastAPI/Streamlit 환경에서 동일하게 추적할 수 있습니다.
 
 - **LangGraph 다이어그램**  
   - 에이전트 흐름을 시각화하려면 다음 명령을 실행하세요.
@@ -186,6 +195,10 @@ uvicorn api:app --host 0.0.0.0 --port 8502 --reload
   - `.env`에 OpenAI 키가 설정되었는지, 요금제 한도가 남아있는지 점검하세요.
 - RAG 분석 오류  
   - PDF가 암호화되어 있거나 페이지 수가 매우 많은 경우 chunk 분할이 오래 걸릴 수 있습니다. 필요한 일부 페이지만 발췌해 업로드하는 것을 권장합니다.
+- 글로벌 선물/환율 스냅샷 오류  
+  - 애플리케이션은 3회까지 자동 재시도 후 마지막 성공 데이터를 디스크 캐시에서 복원합니다.  
+  - Streamlit 대시보드 하단의 경고 메시지를 확인해 Rate Limit 또는 네트워크 이슈인지 진단하세요.  
+  - 빈번한 429가 지속되면 서버 측 주기 캐시(예: 5분마다 백엔드 스케줄러 실행)나 보다 안정적인 데이터 API로 교체하는 것을 고려하세요.
 - FastAPI 호출 오류  
   - `422` 응답은 요청 파라미터가 잘못된 경우이므로 Swagger UI의 스키마 정의를 참고하세요.  
   - `500` 응답이 지속되면 OpenAI API 키, 외부 네트워크 정책, pykrx 데이터 접근 권한을 점검하세요.
@@ -193,7 +206,10 @@ uvicorn api:app --host 0.0.0.0 --port 8502 --reload
 ## 📌 개발 노트
 
 - `data_fetcher._LAST_SUCCESS_CACHE`는 API 실패 시 사용자 경험을 보호하기 위한 로컬 메모리 캐시입니다. Streamlit 앱이 재시작되면 초기화됩니다.
+- 글로벌 시장 데이터는 `.cache/global_snapshot.json`에 15분 동안 저장되며, 장애 시 자동으로 복원됩니다.
 - `analytics/technical.py`는 pandas 기반 지표 계산만 담당합니다. 다른 페이지에서도 재사용할 수 있도록 설계했습니다.
 - LangGraph 플로우 및 멀티 에이전트 오케스트레이터는 확장성을 염두에 두고 작성되었기 때문에, 추가 뉴스 소스나 정량 지표 노드를 쉽게 삽입할 수 있습니다.
+- `agent.py`와 `data_fetcher.py`는 `logging` 모듈을 사용하므로 환경 설정으로 로그 레벨/핸들러를 자유롭게 조정할 수 있습니다.
+- `pytest` 설치 후 `pytest` 명령으로 기본 테스트(`tests/test_data_fetcher.py`)를 실행해 글로벌 데이터 폴백 동작을 검증할 수 있습니다.
 
 필요한 기능이나 개선 아이디어가 있으면 Issues 또는 PR로 참여해 주세요! 🎉

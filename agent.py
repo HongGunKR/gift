@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import logging
 import os
 import tempfile
 from typing import List, Tuple, TypedDict
@@ -14,7 +15,10 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langgraph.graph import END, StateGraph
+
+logger = logging.getLogger(__name__)
 
 # Agent의 상태(State) 정의: 그래프의 각 노드를 거치며 데이터가 저장되고 업데이트됩니다.
 class AgentState(TypedDict):
@@ -94,7 +98,7 @@ llm = ChatOpenAI(model_name="gpt-4o")
 # --- 각 노드(Node)에 해당하는 함수들을 정의합니다. ---
 def initial_analysis_node(state: AgentState):
     """1차 분석 노드: 기업 개요와 재무 정보를 종합하여 초기 분석 및 판단을 수행합니다."""
-    print("--- 1. 1차 분석 노드 실행 ---")
+    logger.info("initial_analysis node invoked", extra={"stock": state["stock_name"]})
     stock_name = state["stock_name"]
     ratios = state.get("ratios") or {}
     ratios_str = _build_ratio_prompt(ratios)
@@ -112,7 +116,7 @@ def initial_analysis_node(state: AgentState):
     try:
         response = chain.invoke({"stock_name": stock_name, "ratios_str": ratios_str})
     except Exception as exc:
-        print(f"initial_analysis_node LLM error: {exc}")
+        logger.error("initial_analysis_node LLM error", exc_info=exc)
         return {
             "initial_analysis": "LLM 분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
             "classification": "neutral",
@@ -123,7 +127,7 @@ def initial_analysis_node(state: AgentState):
 
 def search_positive_news_node(state: AgentState):
     """호재성 뉴스를 검색하는 노드"""
-    print("--- 2a. 호재성 뉴스 검색 노드 실행 ---")
+    logger.info("search_positive_news node invoked", extra={"stock": state["stock_name"]})
     query = f"{state['stock_name']} 호재 전망 신제품"
     news = data_fetcher.search_news(query)
     if not news:
@@ -132,7 +136,7 @@ def search_positive_news_node(state: AgentState):
 
 def search_negative_news_node(state: AgentState):
     """악재성 뉴스를 검색하는 노드"""
-    print("--- 2b. 악재성 뉴스 검색 노드 실행 ---")
+    logger.info("search_negative_news node invoked", extra={"stock": state["stock_name"]})
     query = f"{state['stock_name']} 악재 리스크 우려"
     news = data_fetcher.search_news(query)
     if not news:
@@ -141,13 +145,13 @@ def search_negative_news_node(state: AgentState):
 
 def search_general_news_node(state: AgentState):
     """일반 뉴스를 검색하는 노드"""
-    print("--- 2c. 일반 뉴스 검색 노드 실행 ---")
+    logger.info("search_general_news node invoked", extra={"stock": state["stock_name"]})
     news = data_fetcher.search_news(f"{state['stock_name']} 주가")
     return {"news": news or []}
 
 def final_report_node(state: AgentState):
     """최종 보고서 생성 노드: 모든 정보를 종합하여 최종 리포트를 작성합니다."""
-    print("--- 3. 최종 보고서 생성 노드 실행 ---")
+    logger.info("final_report node invoked", extra={"stock": state["stock_name"]})
     prompt = ChatPromptTemplate.from_template(
         """당신은 유능한 투자 분석가입니다. 다음 정보를 종합하여 '{stock_name}'에 대한 최종 투자 분석 보고서를 작성해주세요.
 
@@ -290,7 +294,7 @@ def get_rag_analysis(uploaded_file, question):
         return response.get("answer", "답변을 생성하지 못했습니다.")
 
     except Exception as e:
-        print(f"RAG 분석 중 오류가 발생했습니다: {e}")
+        logger.error("RAG analysis failed", exc_info=e)
         return f"RAG 분석 중 오류가 발생했습니다: {e}"
     finally:
         if temp_path and os.path.exists(temp_path):
