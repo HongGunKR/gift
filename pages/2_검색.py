@@ -3,9 +3,9 @@
 import pandas as pd
 import streamlit as st
 
-import agent
-import data_fetcher
 from analytics import compute_indicator_snapshot, prepare_price_frame
+from app.agents import langgraph
+from app.services import data_fetcher
 
 # 메뉴 순서 지정을 위한 CSS 코드
 st.markdown(
@@ -163,7 +163,9 @@ if search_term:
                 with st.spinner('LangGraph Agent가 정보를 수집하고 분석 중입니다...'):
                     ratios = data_fetcher.get_financial_ratios(ticker)
                     if ratios:
-                        final_report = agent.run_analysis_agent(stock_to_display, ticker, ratios)
+                        final_report = langgraph.run_analysis_agent(
+                            stock_to_display, ticker, ratios
+                        )
                         st.markdown(final_report)
                     else:
                         st.error("분석에 필요한 재무 정보를 가져오지 못했습니다.")

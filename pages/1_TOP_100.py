@@ -1,7 +1,7 @@
 # pages/1_TOP_100.py : 시가총액 Top 100 메뉴
 
 import streamlit as st
-import data_fetcher
+from app.services import data_fetcher
 
 # 메뉴 순서 지정을 위한 CSS 코드
 st.markdown(

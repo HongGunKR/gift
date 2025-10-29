@@ -26,14 +26,14 @@ graph TD
     %% FastAPI 계층
     subgraph "API 계층 (FastAPI)"
         P["🛰️ Uvicorn Server<br/>(포트 8502)"]
-        Q["📜 api.py<br/>REST + Swagger UI"]
+        Q["📜 app/web/api.py<br/>REST + Swagger UI"]
     end
 
     %% AI / 데이터 로직
     subgraph "AI 멀티 에이전트 & 데이터 로직"
-        H["🤖 agent.py<br/>(LangGraph Workflow)"]
-        H2["🤝 multi_agent.py<br/>(펀더멘털·뉴스·리스크 협업)"]
-        I["📜 data_fetcher.py<br/>(시장·뉴스·글로벌 데이터)"]
+        H["🤖 app/agents/langgraph.py<br/>(LangGraph Workflow)"]
+        H2["🤝 app/agents/multi_agent.py<br/>(펀더멘털·뉴스·리스크 협업)"]
+        I["📜 app/services/data_fetcher.py<br/>(시장·뉴스·글로벌 데이터)"]
         R["📊 analytics/technical.py<br/>(기술적 지표 계산)"]
     end
 
@@ -104,5 +104,5 @@ graph TD
 
     %% 다이어그램 CLI 흐름
     A -- "'python3 diagram/visualize_graph.py --format png --output diagram/langgraph.png' 실행" --> N
-    N -- "agent.py 그래프 로딩" --> H
+    N -- "app/agents/langgraph.py 그래프 로딩" --> H
     N -- "Mermaid 렌더링 (Pyppeteer)" --> O

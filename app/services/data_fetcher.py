@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -205,6 +206,27 @@ def _find_index_ticker(target_name: str, date: str) -> Optional[str]:
             extra={"target": target_name, "error": str(exc)},
         )
     return None
+
+
+def _load_sector_snapshot(
+    sector_name: str, start_date: str, end_date: str, reference_day: str
+) -> Optional[Dict[str, Any]]:
+    ticker = _find_index_ticker(sector_name, reference_day)
+    if not ticker:
+        return None
+    sector_df = stock.get_index_ohlcv_by_date(start_date, end_date, ticker)
+    if sector_df.empty:
+        return None
+    latest = sector_df.iloc[-1]["종가"]
+    previous = sector_df.iloc[-2]["종가"] if len(sector_df) > 1 else latest
+    diff = latest - previous
+    change_pct = (diff / previous * 100) if previous else 0
+    return {
+        "섹터": sector_name,
+        "현재가": latest,
+        "전일대비": diff,
+        "등락률(%)": change_pct,
+    }
 
 
 @cache_data_or_lru(ttl=900, show_spinner=False)
@@ -410,32 +432,24 @@ def get_sector_performance(top_n: int = 5) -> pd.DataFrame:
         end_date = reference_day
 
         rows: List[Dict[str, Any]] = []
-
-        for sector_name in _SECTOR_CANDIDATES:
-            ticker = _find_index_ticker(sector_name, reference_day)
-            if not ticker:
-                continue
-            try:
-                sector_df = stock.get_index_ohlcv_by_date(start_date, end_date, ticker)
-                if sector_df.empty:
-                    continue
-                latest = sector_df.iloc[-1]["종가"]
-                previous = sector_df.iloc[-2]["종가"] if len(sector_df) > 1 else latest
-                diff = latest - previous
-                change_pct = (diff / previous * 100) if previous else 0
-                rows.append(
-                    {
-                        "섹터": sector_name,
-                        "현재가": latest,
-                        "전일대비": diff,
-                        "등락률(%)": change_pct,
-                    }
-                )
-            except Exception as inner_exc:
-                logger.warning(
-                    "Failed to load sector data",
-                    extra={"sector": sector_name, "error": str(inner_exc)},
-                )
+        with ThreadPoolExecutor(max_workers=min(4, len(_SECTOR_CANDIDATES))) as executor:
+            futures = {
+                executor.submit(
+                    _load_sector_snapshot, sector_name, start_date, end_date, reference_day
+                ): sector_name
+                for sector_name in _SECTOR_CANDIDATES
+            }
+            for future in as_completed(futures):
+                sector_name = futures[future]
+                try:
+                    snapshot = future.result()
+                    if snapshot:
+                        rows.append(snapshot)
+                except Exception as inner_exc:
+                    logger.warning(
+                        "Failed to load sector data",
+                        extra={"sector": sector_name, "error": str(inner_exc)},
+                    )
 
         if not rows:
             raise RuntimeError("No sector data retrieved")
@@ -501,3 +515,17 @@ def get_global_market_snapshot() -> List[Dict[str, Any]]:
         if persistent:
             return persistent
         return _build_global_snapshot_placeholder()
+
+
+__all__ = [
+    "get_market_indices",
+    "get_top_100_market_cap_stocks",
+    "get_stock_name_ticker_map",
+    "get_stock_info_by_name",
+    "search_stocks_by_keyword",
+    "get_financial_ratios",
+    "search_news",
+    "get_sector_performance",
+    "get_global_market_snapshot",
+    "get_last_data_error",
+]

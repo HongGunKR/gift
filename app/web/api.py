@@ -7,8 +7,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-import data_fetcher
-from multi_agent import MultiAgentResult, run_multi_agent_analysis
+from app.agents import MultiAgentResult, run_multi_agent_analysis
+from app.services import data_fetcher
 
 
 def _frame_to_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -128,4 +128,4 @@ def get_top_100() -> List[Dict[str, Any]]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("api:app", host="0.0.0.0", port=8502, reload=True)
+    uvicorn.run("app.web.api:app", host="0.0.0.0", port=8502, reload=True)

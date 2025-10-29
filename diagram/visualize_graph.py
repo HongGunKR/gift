@@ -1,6 +1,6 @@
 """LangGraph 시각화 스크립트.
 
-agent.py에 정의된 LangGraph 워크플로우를 PNG/SVG로 내보냅니다.
+app.agents.langgraph 모듈에 정의된 워크플로우를 PNG/SVG로 내보냅니다.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-from agent import (  # noqa: E402
+from app.agents.langgraph import (  # noqa: E402
     AgentState,
     final_report_node,
     initial_analysis_node,

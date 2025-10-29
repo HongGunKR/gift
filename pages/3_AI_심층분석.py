@@ -1,9 +1,9 @@
-# pages/3_AI_심층분석.py : RAG 기반 심층 분석 메뉴
-
-import streamlit as st
-import agent
 import os
 from io import BytesIO
+
+import streamlit as st
+
+from app.agents import langgraph
 
 # 메뉴 순서 지정을 위한 CSS 코드
 st.markdown(
@@ -112,7 +112,7 @@ if file_to_analyze and file_name_to_analyze:
                 file_to_analyze.name = file_name_to_analyze
                 
                 # RAG 분석 함수를 호출합니다.
-                answer = agent.get_rag_analysis(file_to_analyze, question)
+                answer = langgraph.get_rag_analysis(file_to_analyze, question)
                 st.success(answer)
         else:
             st.warning("질문을 입력해주세요.")

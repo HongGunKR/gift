@@ -5,11 +5,10 @@ from __future__ import annotations
 from typing import Dict, List, Optional, TypedDict
 
 from dotenv import load_dotenv
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-import data_fetcher
+from app.services import data_fetcher
+from app.utils import invoke_prompt_safely
 
 
 class MultiAgentResult(TypedDict):
@@ -25,7 +24,6 @@ class MultiAgentResult(TypedDict):
 
 load_dotenv()
 
-_SHARED_LLM: Optional[ChatOpenAI] = None
 
 def _format_ratio_context(ratios: Dict[str, float]) -> str:
     if not ratios:
@@ -63,14 +61,6 @@ def _render_news_context(news_items: List[Dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def _get_shared_llm() -> ChatOpenAI:
-    global _SHARED_LLM
-    if _SHARED_LLM is None:
-        # 온도는 낮게 유지하여 일관된 분석을 유도합니다.
-        _SHARED_LLM = ChatOpenAI(model_name="gpt-4o", temperature=0.2)
-    return _SHARED_LLM
-
-
 def _fundamental_agent(stock_name: str, ratio_context: str) -> str:
     prompt = ChatPromptTemplate.from_template(
         """당신은 주식 애널리스트입니다. 아래 정보를 바탕으로 {stock_name}의 펀더멘털을 분석해주세요.
@@ -81,11 +71,15 @@ def _fundamental_agent(stock_name: str, ratio_context: str) -> str:
 요구사항:
 - 재무 지표를 간결하게 요약하고 의미를 해석하세요.
 - 동종 업계 평균과 비교했을 때의 상대적 위치를 추정하세요 (가정 가능).
-- 투자자가 주목해야 할 긍정/부정 포인트를 bullet로 정리하세요.
+        - 투자자가 주목해야 할 긍정/부정 포인트를 bullet로 정리하세요.
 """
     )
-    chain = prompt | _get_shared_llm() | StrOutputParser()
-    return chain.invoke({"stock_name": stock_name, "ratio_context": ratio_context})
+    return invoke_prompt_safely(
+        prompt,
+        {"stock_name": stock_name, "ratio_context": ratio_context},
+        fallback_message="펀더멘털 분석을 준비하지 못했습니다.",
+        log_context="fundamental_agent",
+    )
 
 
 def _news_agent(stock_name: str, news_items: List[Dict[str, str]]) -> str:
@@ -101,9 +95,14 @@ def _news_agent(stock_name: str, news_items: List[Dict[str, str]]) -> str:
 - 중복된 이슈는 통합하고, 신뢰도가 낮으면 주석으로 표시하세요.
 """
     )
-    chain = prompt | _get_shared_llm() | StrOutputParser()
-    return chain.invoke(
-        {"stock_name": stock_name, "news_context": _render_news_context(news_items)}
+    return invoke_prompt_safely(
+        prompt,
+        {
+            "stock_name": stock_name,
+            "news_context": _render_news_context(news_items),
+        },
+        fallback_message="뉴스 요약을 제공하지 못했습니다.",
+        log_context="news_agent",
     )
 
 
@@ -123,13 +122,15 @@ def _risk_agent(stock_name: str, fundamental: str, news_summary: str) -> str:
 - 리스크 완화 전략이나 모니터링 포인트를 함께 제안하세요.
 """
     )
-    chain = prompt | _get_shared_llm() | StrOutputParser()
-    return chain.invoke(
+    return invoke_prompt_safely(
+        prompt,
         {
             "stock_name": stock_name,
             "fundamental": fundamental,
             "news_summary": news_summary,
-        }
+        },
+        fallback_message="리스크 보고서를 준비하지 못했습니다.",
+        log_context="risk_agent",
     )
 
 
@@ -154,14 +155,16 @@ def _synthesis_agent(
 - 마지막에는 `투자 판단` 섹션을 별도로 만들어 (매수/관망/매도) 중 하나를 추천하고 근거를 제시하세요.
 """
     )
-    chain = prompt | _get_shared_llm() | StrOutputParser()
-    return chain.invoke(
+    return invoke_prompt_safely(
+        prompt,
         {
             "stock_name": stock_name,
             "fundamental": fundamental,
             "news_summary": news_summary,
             "risk_report": risk_report,
-        }
+        },
+        fallback_message="최종 추천을 생성하지 못했습니다.",
+        log_context="synthesis_agent",
     )
 
 
@@ -200,3 +203,6 @@ def run_multi_agent_analysis(
         risk_analysis=risk_report,
         final_recommendation=final_recommendation,
     )
+
+
+__all__ = ["run_multi_agent_analysis", "MultiAgentResult"]

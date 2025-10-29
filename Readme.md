@@ -21,8 +21,8 @@
   - DuckDuckGo 검색이 실패하거나 뉴스가 없을 경우에도 안내 메시지를 반환하도록 보강했습니다.
 
 - **멀티 에이전트 오케스트레이션 & Swagger API**  
-  - 펀더멘털·뉴스·리스크·최종 의사결정 에이전트가 협업하여 심층 분석 리포트를 생성합니다. (`multi_agent.py`)  
-  - FastAPI 기반 `api.py` 서버를 통해 동일 기능을 REST/JSON으로 제공하며, 자동 생성되는 Swagger UI(`/docs`)와 OpenAPI 스키마(`/openapi.json`)를 제공합니다.
+  - 펀더멘털·뉴스·리스크·최종 의사결정 에이전트가 협업하여 심층 분석 리포트를 생성합니다. (`app/agents/multi_agent.py`)  
+  - FastAPI 기반 `app/web/api.py` 서버를 통해 동일 기능을 REST/JSON으로 제공하며, 자동 생성되는 Swagger UI(`/docs`)와 OpenAPI 스키마(`/openapi.json`)를 제공합니다.
 
 - **RAG 문서 Q&A**  
   - 업로드/서버 저장 PDF를 선택해 질문하면, OpenAI 임베딩과 FAISS 벡터스토어를 활용해 문서 맥락 기반 답변을 제공합니다.  
@@ -44,7 +44,7 @@
   - `pages/2_검색.py`: 종목 검색 + 기술적 지표 + LangGraph 분석  
   - `pages/3_AI_심층분석.py`: RAG 기반 문서 질의
 
-- **데이터 서비스 (`data_fetcher.py`)**  
+- **데이터 서비스 (`app/services/data_fetcher.py`)**  
   - Streamlit 실행 여부를 감지해 `st.cache_data` 또는 `functools.lru_cache`를 투명하게 선택, FastAPI 단독 실행 시에도 동일한 캐싱을 제공합니다.  
   - pykrx/뉴스/글로벌 데이터는 메모리 캐시와 `.cache/global_snapshot.json` 디스크 캐시를 함께 사용해 장애 복원력을 높였습니다.  
   - `logging` 기반 구조화 로그와 `get_last_data_error` 헬퍼를 제공해 UI/백엔드에서 오류 원인을 즉시 확인할 수 있습니다.
@@ -53,13 +53,13 @@
 - **기술적 지표 모듈 (`analytics/technical.py`)**  
   - pandas rolling 연산으로 이동평균·거래량 평균을 계산하고, 괴리율·52주 고저 대비·최근 수익률을 딕셔너리 형태로 제공합니다.
 
-- **AI Agent (`agent.py`)**  
+- **AI Agent (`app/agents/langgraph.py`)**  
   - LangGraph의 조건부 엣지를 사용해 분석→뉴스→보고서 플로우를 구성합니다.  
   - LLM 응답 파싱, 뉴스 포맷팅, 임시 파일 관리 등 안정성을 강화했습니다.
 
 - **멀티 에이전트 & API**  
-  - `multi_agent.py`: 펀더멘털·뉴스·리스크·최종 의사결정을 담당하는 네 개의 LLM 에이전트가 협업합니다.  
-  - `api.py`: FastAPI + Swagger UI를 이용해 프로그램형 인터페이스를 제공합니다.
+  - `app/agents/multi_agent.py`: 펀더멘털·뉴스·리스크·최종 의사결정을 담당하는 네 개의 LLM 에이전트가 협업합니다.  
+  - `app/web/api.py`: FastAPI + Swagger UI를 이용해 프로그램형 인터페이스를 제공합니다.
 
 ## 📂 프로젝트 구조
 
@@ -86,10 +86,21 @@
 ├── .dockerignore
 ├── .gitignore
 ├── 메인.py                         # 메인 대시보드
-├── agent.py
-├── api.py                          # FastAPI 엔드포인트
-├── data_fetcher.py
-├── multi_agent.py                  # 협업 에이전트 오케스트레이터
+├── app/
+│   ├── __init__.py
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── langgraph.py            # LangGraph 기반 분석 에이전트
+│   │   └── multi_agent.py          # 협업 에이전트 오케스트레이터
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── data_fetcher.py         # 외부 데이터 수집 및 캐시
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── llm.py                  # 공용 LLM 유틸리티
+│   └── web/
+│       ├── __init__.py
+│       └── api.py                  # FastAPI 엔드포인트
 ├── requirements.txt
 └── Readme.md
 ```
@@ -150,7 +161,7 @@ streamlit run 메인.py
 **옵션 C · FastAPI 서버 (멀티 에이전트 & Swagger)**  
 
 ```bash
-uvicorn api:app --host 0.0.0.0 --port 8502 --reload
+uvicorn app.web.api:app --host 0.0.0.0 --port 8502 --reload
 ```
 
 - Swagger UI: `http://localhost:8502/docs`  
@@ -209,7 +220,7 @@ uvicorn api:app --host 0.0.0.0 --port 8502 --reload
 - 글로벌 시장 데이터는 `.cache/global_snapshot.json`에 15분 동안 저장되며, 장애 시 자동으로 복원됩니다.
 - `analytics/technical.py`는 pandas 기반 지표 계산만 담당합니다. 다른 페이지에서도 재사용할 수 있도록 설계했습니다.
 - LangGraph 플로우 및 멀티 에이전트 오케스트레이터는 확장성을 염두에 두고 작성되었기 때문에, 추가 뉴스 소스나 정량 지표 노드를 쉽게 삽입할 수 있습니다.
-- `agent.py`와 `data_fetcher.py`는 `logging` 모듈을 사용하므로 환경 설정으로 로그 레벨/핸들러를 자유롭게 조정할 수 있습니다.
+- `app/agents/langgraph.py`와 `app/services/data_fetcher.py`는 `logging` 모듈을 사용하므로 환경 설정으로 로그 레벨/핸들러를 자유롭게 조정할 수 있습니다.
 - `pytest` 설치 후 `pytest` 명령으로 기본 테스트(`tests/test_data_fetcher.py`)를 실행해 글로벌 데이터 폴백 동작을 검증할 수 있습니다.
 
 필요한 기능이나 개선 아이디어가 있으면 Issues 또는 PR로 참여해 주세요! 🎉

@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-import data_fetcher
+from app.services import data_fetcher
 
 # 메뉴 순서 지정을 위한 CSS 코드
 st.markdown(

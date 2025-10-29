@@ -25,7 +25,7 @@ services:
     image: modu-gift
     depends_on:
       - app
-    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8502"]
+    command: ["uvicorn", "app.web.api:app", "--host", "0.0.0.0", "--port", "8502"]
     ports:
       - "8502:8502"
     env_file:
