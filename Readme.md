@@ -123,7 +123,21 @@ LangGraph 다이어그램 생성을 위해 Graphviz 라이브러리가 필요합
 - **Ubuntu/Debian**  
   `sudo apt-get update && sudo apt-get install -y graphviz libgraphviz-dev`
 
-### 3. 환경 변수
+### 3. 파이썬 가상환경
+
+다른 로컬에서 라이브러리 충돌 없이 작업하려면 루트에서 `.venv`를 만들고 가상환경을 활성화하세요. `.venv`는 이미 `.gitignore`에 추가되어 있으므로 커밋되지 않습니다.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate             # macOS/Linux
+.\.venv\Scripts\activate              # Windows PowerShell
+pip install --upgrade pip
+```
+
+- 새 패키지를 설치하거나 종속성 버전을 업데이트한 뒤에는 환경이 활성화된 상태에서 Section 5의 `pip install -r requirements.txt`를 실행하고 `pip freeze > requirements.txt`를 적용해 정확한 의존성 스냅샷을 기록하세요.  
+- 새 터미널을 열면 위의 활성화 명령을 다시 실행하면 되고, 작업을 마쳐도 꺼도 괜찮습니다.
+
+### 4. 환경 변수
 
 루트 디렉토리에 `.env` 파일을 만들고 OpenAI API 키를 지정하세요.
 
@@ -131,7 +145,7 @@ LangGraph 다이어그램 생성을 위해 Graphviz 라이브러리가 필요합
 OPENAI_API_KEY="sk-..."
 ```
 
-### 4. 파이썬 의존성 설치
+### 5. 파이썬 의존성 설치
 
 ```bash
 pip install -r requirements.txt
@@ -142,7 +156,7 @@ pip install -r requirements.txt
 > - Apple Silicon: `LDFLAGS="-L/opt/homebrew/lib/" CPPFLAGS="-I/opt/homebrew/include/" pip install pygraphviz`
 > - Intel Mac: `LDFLAGS="-L$(brew --prefix graphviz)/lib" CPPFLAGS="-I$(brew --prefix graphviz)/include" pip install pygraphviz`
 
-### 5. 애플리케이션 실행
+### 6. 애플리케이션 실행
 
 **옵션 A · Docker Compose (권장)**
 
