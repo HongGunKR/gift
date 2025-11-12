@@ -83,6 +83,7 @@
 │   └── 3_AI_심층분석.py
 ├── reports/                        # 업로드/관리용 PDF 저장소
 ├── .env                            # OPENAI_API_KEY 등 환경 변수
+├── .venv                           # 가상환경 디렉터리 (ignored)
 ├── .dockerignore
 ├── .gitignore
 ├── 메인.py                         # 메인 대시보드
