@@ -266,12 +266,41 @@ def get_rag_analysis(uploaded_file, question):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = loader.load_and_split(text_splitter)
 
+        if not docs:
+            logger.error("No documents extracted for RAG", extra={"file": temp_path})
+            return "문서 내용을 읽을 수 없어 RAG 분석을 수행하지 못했습니다."
+
         try:
-            embeddings = OpenAIEmbeddings()
+            embedding_model = OpenAIEmbeddings()
         except Exception as exc:
             logger.error("Failed to initialize embeddings", extra={"error": str(exc)})
             return "임베딩 설정을 확인할 수 없어 RAG 분석을 수행하지 못했습니다."
-        vector_store = FAISS.from_documents(docs, embeddings)
+
+        texts = [doc.page_content for doc in docs]
+        metadatas = [doc.metadata for doc in docs]
+
+        batch_size = 8
+        embeddings_list: list[list[float]] = []
+        try:
+            for start in range(0, len(texts), batch_size):
+                batch_texts = texts[start : start + batch_size]
+                batch_embeddings = embedding_model.embed_documents(
+                    batch_texts, chunk_size=batch_size
+                )
+                embeddings_list.extend(batch_embeddings)
+        except Exception as exc:
+            logger.error(
+                "Failed to embed documents for RAG",
+                extra={"error": str(exc)},
+            )
+            return "문서 임베딩 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+
+        vector_store = FAISS._FAISS__from(
+            texts,
+            embeddings_list,
+            embedding_model,
+            metadatas=metadatas,
+        )
 
         prompt = ChatPromptTemplate.from_template(
             """
