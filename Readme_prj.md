@@ -39,6 +39,7 @@ LangGraph 조건부 엣지로 `재무 → 뉴스 → 리스크 → 최종 코멘
 업로드 또는 `reports/` 디렉터리에 저장된 PDF 문서를 LangChain 로더로 분할하고 OpenAI 임베딩으로 벡터화했습니다.
 - FAISS 벡터스토어를 구축해 유사도 기반 검색 결과를 RetrievalQA 체인에 전달, 근거 기반 답변을 생성했습니다.
 - 암호화 파일, 과도한 페이지 수 등의 예외를 감지해 사용자에게 원인을 안내하고 임시 파일을 자동 정리합니다.
+- 긴 문서는 RecursiveCharacterTextSplitter로 청크화한 뒤 OpenAI 임베딩을 batch 요청으로 생성해 `max_tokens_per_request` 제한을 회피하면서도 안정적으로 대응합니다.
 
 4) **서비스 개발 및 패키징 (Streamlit + FastAPI + Docker)**  
 Streamlit 멀티 페이지 앱으로 시장 대시보드, Top 100, 종목 분석, 문서 RAG 화면을 분리해 사용자 흐름을 명확히 했습니다.
